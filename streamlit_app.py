@@ -232,12 +232,16 @@ if export_click:
                 notes.append(f"Top Bowler — {team}: no template row or no selections.")
 
             # Top Batter
-            tbat_sel = parsed[(parsed.Market=="Top Batter") & (parsed.Team==team)]
-            tbat_tpl = tpl_by_name(f"{team} Top Batter") or tpl_by_name(f"Top Batter - {team} - 1st Innings")
+            tbat_sel = parsed[(parsed.Market == "Top Batter") & (parsed.Team == team)]
+            tbat_tpl = tpl_by_name(f"{team} Top Batter")
+            if tbat_tpl is None:
+                tbat_tpl = tpl_by_name(f"Top Batter - {team} - 1st Innings")
+
             if tbat_tpl is not None and not tbat_sel.empty:
                 chunks.append(replicate_from_template(tbat_tpl, tbat_sel, outcols, sel_name_col, sel_odds_col))
             else:
                 notes.append(f"Top Batter — {team}: no template row or no selections.")
+
 
         if not chunks:
             st.error("No output built." + (" " + "; ".join(notes) if notes else ""))
@@ -271,3 +275,5 @@ if export_click:
 
             if notes:
                 st.info("Notes: " + "; ".join(notes))
+
+
