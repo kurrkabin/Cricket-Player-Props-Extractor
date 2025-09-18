@@ -201,13 +201,13 @@ if export_click:
         sel_name_col = STATE["sel_name_col"]; sel_odds_col = STATE["sel_odds_col"]
 
         def tpl_by_name(name: str) -> Optional[pd.Series]:
-            key = re.sub(r"\s+"," ", name.strip().lower())
+            key = re.sub(r"\s+"," ", (name or "").strip().lower())
             return tmap.get(key, None)
 
         chunks, notes = [], []
 
         # 1) Player of the Match
-        potm_sel = parsed[parsed.Market=="Player of the Match"]
+        potm_sel = parsed[parsed.Market == "Player of the Match"]
         potm_tpl = tpl_by_name("Player of the Match")
         if potm_tpl is not None and not potm_sel.empty:
             chunks.append(replicate_from_template(potm_tpl, potm_sel, outcols, sel_name_col, sel_odds_col))
@@ -217,11 +217,14 @@ if export_click:
         # 2) Teams (Top Bowler + Top Batter)
         teams = detect_teams(parsed)
         for team in teams:
-            if not team: 
+            if not isinstance(team, str):  # hard guard
+                continue
+            team = team.strip()
+            if not team:
                 continue
 
             # Top Bowler
-            tb_sel = parsed[(parsed.Market=="Top Bowler") & (parsed.Team==team)]
+            tb_sel = parsed[(parsed.Market == "Top Bowler") & (parsed.Team == team)]
             tb_tpl = tpl_by_name(f"{team} Top Bowler")
             if tb_tpl is None:
                 tb_tpl = tpl_by_name(f"Top Bowler - {team} - 1st Innings")
@@ -235,13 +238,15 @@ if export_click:
             tbat_sel = parsed[(parsed.Market == "Top Batter") & (parsed.Team == team)]
             tbat_tpl = tpl_by_name(f"{team} Top Batter")
             if tbat_tpl is None:
+                # try common variants
                 tbat_tpl = tpl_by_name(f"Top Batter - {team} - 1st Innings")
+                if tbat_tpl is None:
+                    tbat_tpl = tpl_by_name(f"Top Run Scorer - {team} - 1st Innings")
 
             if tbat_tpl is not None and not tbat_sel.empty:
                 chunks.append(replicate_from_template(tbat_tpl, tbat_sel, outcols, sel_name_col, sel_odds_col))
             else:
                 notes.append(f"Top Batter — {team}: no template row or no selections.")
-
 
         if not chunks:
             st.error("No output built." + (" " + "; ".join(notes) if notes else ""))
@@ -275,5 +280,3 @@ if export_click:
 
             if notes:
                 st.info("Notes: " + "; ".join(notes))
-
-
