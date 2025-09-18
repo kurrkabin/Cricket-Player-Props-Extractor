@@ -221,7 +221,14 @@ if export_click:
 
             # Top Bowler
             tb_sel = parsed[(parsed.Market=="Top Bowler") & (parsed.Team==team)]
-            tb_tpl = tpl_by_name(f"{team} Top Bowler") or tpl_by_name(f"Top Bowler - {team} - 1st Innings")
+            tb_tpl = tpl_by_name(f"{team} Top Bowler")
+            if tb_tpl is None:
+                tb_tpl = tpl_by_name(f"Top Bowler - {team} - 1st Innings")
+
+            tbat_tpl = tpl_by_name(f"{team} Top Batter")
+                if tbat_tpl is None:
+            tbat_tpl = tpl_by_name(f"Top Batter - {team} - 1st Innings")
+
             if tb_tpl is not None and not tb_sel.empty:
                 chunks.append(replicate_from_template(tb_tpl, tb_sel, outcols, sel_name_col, sel_odds_col))
             else:
