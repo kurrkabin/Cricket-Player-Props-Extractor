@@ -36,11 +36,18 @@ def _is_boundary(line: str) -> bool:
     low = line.lower()
     return _is_heading(line) or (low in STOP_WORDS)
 
+def _norm_player_name(s: str) -> str:
+    # normalize for robust de-duping: trim, collapse spaces, casefold
+    s = str(s or "").strip()
+    s = re.sub(r"\s+", " ", s)
+    return s.casefold()
+
 def _parse_block(lines: List[str], start: int, market: str, team: Optional[str]) -> Tuple[List[Dict], int]:
     rows, j, pending = [], start + 1, None
     while j < len(lines):
         s = lines[j].strip()
-        if _is_boundary(s): break
+        if _is_boundary(s):
+            break
         if RE_DECIMAL.match(s):
             if pending:
                 rows.append({"Market": market, "Team": team or "", "SelectionName": pending, "SelectionOdds": s})
@@ -56,24 +63,46 @@ def parse_unibet(text: str) -> pd.DataFrame:
     while i < len(lines):
         s = lines[i]
         if RE_PLAYER_OF_MATCH.match(s):
-            r, i = _parse_block(lines, i, "Player of the Match", None); out += r; continue
+            r, i = _parse_block(lines, i, "Player of the Match", None)
+            out += r
+            continue
+
         m = RE_TOP_BOWLER_TEAM.match(s)
         if m:
             team = m.group(1).strip()
-            r, i = _parse_block(lines, i, "Top Bowler", team); out += r; continue
+            r, i = _parse_block(lines, i, "Top Bowler", team)
+            out += r
+            continue
+
         m = RE_TOP_RUNSCORER_TEAM.match(s)
         if m:
             team = m.group(1).strip()
             # rename to Top Batter
-            r, i = _parse_block(lines, i, "Top Batter", team); out += r; continue
+            r, i = _parse_block(lines, i, "Top Batter", team)
+            out += r
+            continue
+
         i += 1
-    return pd.DataFrame(out, columns=["Market","Team","SelectionName","SelectionOdds"]).reset_index(drop=True)
+
+    df = pd.DataFrame(out, columns=["Market","Team","SelectionName","SelectionOdds"]).reset_index(drop=True)
+    if df.empty:
+        return df
+
+    # --- FIX: remove duplicates within the same Market+Team (common when paste contains "View more" then "View less") ---
+    # Keep the LAST occurrence so the "expanded" list (usually later in the paste) wins.
+    df["__sel_norm"] = df["SelectionName"].map(_norm_player_name)
+    df = df.drop_duplicates(subset=["Market","Team","__sel_norm"], keep="last").drop(columns=["__sel_norm"])
+    df = df.reset_index(drop=True)
+    # --- END FIX ---
+
+    return df
 
 def detect_teams(parsed: pd.DataFrame) -> List[str]:
     order = []
     for _, r in parsed[parsed.Market.isin(["Top Bowler","Top Batter"])].iterrows():
         t = r["Team"]
-        if t and t not in order: order.append(t)
+        if t and t not in order:
+            order.append(t)
     if len(order) < 2:
         uniq = sorted([t for t in parsed.Team.unique() if t])
         order = (uniq + ["—","—"])[:2]
@@ -87,7 +116,8 @@ def find_col(df: pd.DataFrame, candidates: List[str]) -> Optional[str]:
     norm = {_norm_key(c): c for c in df.columns}
     for cand in candidates:
         key = _norm_key(cand)
-        if key in norm: return norm[key]
+        if key in norm:
+            return norm[key]
     return None
 
 def unique_markets(df: pd.DataFrame) -> pd.DataFrame:
@@ -101,14 +131,17 @@ def build_template_map(boss: pd.DataFrame, market_name_col: str) -> Dict[str, pd
     m = {}
     for _, row in boss.iterrows():
         key = _norm_space(row.get(market_name_col, ""))
-        if key and key not in m: m[key] = row
+        if key and key not in m:
+            m[key] = row
     return m
 
-def replicate_from_template(template: pd.Series,
-                            selections: pd.DataFrame,
-                            outcols: List[str],
-                            sel_name_col: str,
-                            sel_odds_col: str) -> pd.DataFrame:
+def replicate_from_template(
+    template: pd.Series,
+    selections: pd.DataFrame,
+    outcols: List[str],
+    sel_name_col: str,
+    sel_odds_col: str
+) -> pd.DataFrame:
     base = pd.DataFrame([template.to_dict()] * len(selections))
     base[sel_name_col] = selections["SelectionName"].values
     base[sel_odds_col] = selections["SelectionOdds"].values
@@ -117,7 +150,8 @@ def replicate_from_template(template: pd.Series,
                  ["LastOdds","lastodds","Lastodds"],
                  ["AnyOdds","anyodds","Anyodds"]):
         col = find_col(base, cset)
-        if col: base[col] = ""
+        if col:
+            base[col] = ""
     return base[outcols]
 
 # ---------- Streamlit UI ----------
@@ -127,7 +161,11 @@ st.caption("Paste Unibet page text; export Boss-shaped CSV/XLSX. No MarketID typ
 
 # Inputs
 boss_file = st.file_uploader("1) Upload Boss Player Props CSV/XLSX export", type=["csv","xlsx"])
-unibet_text = st.text_area("2) Paste Unibet text (Ctrl+A from page)", height=260, placeholder="Player of the Match …\nTop Bowler – Team – 1st Innings …\nTop Run Scorer – Team – 1st Innings …")
+unibet_text = st.text_area(
+    "2) Paste Unibet text (Ctrl+A from page)",
+    height=260,
+    placeholder="Player of the Match …\nTop Bowler – Team – 1st Innings …\nTop Run Scorer – Team – 1st Innings …"
+)
 
 colA, colB = st.columns([1,1])
 parse_click = colA.button("Parse", type="primary")
@@ -252,6 +290,14 @@ if export_click:
             st.error("No output built." + (" " + "; ".join(notes) if notes else ""))
         else:
             out_df = pd.concat(chunks, ignore_index=True)
+
+            # --- FINAL SAFETY FIX: dedupe output per MarketId + SelectionName (prevents any accidental duplicates) ---
+            market_id_col = find_col(out_df, ["MarketId", "marketid"])
+            if market_id_col and sel_name_col in out_df.columns:
+                out_df["__sel_norm"] = out_df[sel_name_col].map(_norm_player_name)
+                out_df = out_df.drop_duplicates(subset=[market_id_col, "__sel_norm"], keep="last")
+                out_df = out_df.drop(columns=["__sel_norm"]).reset_index(drop=True)
+            # --- END SAFETY FIX ---
 
             # Build CSV (UTF-8 BOM) and XLSX in-memory for Streamlit downloads
             csv_bytes = out_df.to_csv(index=False).encode("utf-8-sig")
