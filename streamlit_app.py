@@ -157,7 +157,7 @@ def replicate_from_template(
 # ---------- Streamlit UI ----------
 st.set_page_config(page_title="Unibet → Boss Export", page_icon="📤", layout="wide")
 st.title("Unibet → Boss Export")
-st.caption("Paste Unibet page text; export Boss-shaped CSV/XLSX. No MarketID typing. Keeps your Boss columns/order.")
+st.caption("Paste Unibet page text; export Boss-shaped CSV. No MarketID typing. Keeps your Boss columns/order.")
 
 # Inputs
 boss_file = st.file_uploader("1) Upload Boss Player Props CSV/XLSX export", type=["csv","xlsx"])
@@ -169,7 +169,7 @@ unibet_text = st.text_area(
 
 colA, colB = st.columns([1,1])
 parse_click = colA.button("Parse", type="primary")
-export_click = colB.button("Export (CSV+XLSX)")
+export_click = colB.button("Export (CSV)")
 
 # Session state
 if "STATE" not in st.session_state:
