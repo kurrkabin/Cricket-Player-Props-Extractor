@@ -299,29 +299,18 @@ if export_click:
                 out_df = out_df.drop(columns=["__sel_norm"]).reset_index(drop=True)
             # --- END SAFETY FIX ---
 
-            # Build CSV (UTF-8 BOM) and XLSX in-memory for Streamlit downloads
+            # Build CSV (UTF-8 BOM) in-memory for Streamlit downloads
             csv_bytes = out_df.to_csv(index=False).encode("utf-8-sig")
 
-            xlsx_buffer = io.BytesIO()
-            with pd.ExcelWriter(xlsx_buffer, engine="openpyxl") as w:
-                out_df.to_excel(w, index=False, sheet_name="upload")
-            xlsx_buffer.seek(0)
 
             st.success("Export built.")
             st.dataframe(out_df.head(50), use_container_width=True)
 
-            col1, col2 = st.columns(2)
-            col1.download_button(
+            st.download_button(
                 "⬇️ Download CSV (UTF-8 BOM)",
                 data=csv_bytes,
                 file_name="boss_upload_ready.csv",
                 mime="text/csv"
-            )
-            col2.download_button(
-                "⬇️ Download XLSX",
-                data=xlsx_buffer,
-                file_name="boss_upload_ready.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
             )
 
             if notes:
